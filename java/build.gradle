@@ -58,6 +58,10 @@ tasks.register('launchers') {
 	dependsOn 'testClasses'
 	def classpath = sourceSets.test.runtimeClasspath
 	def source = file('src/test/java/com/payonel/styxlua/tests/StyxTests.java')
+	inputs.property('debug', debug)
+	inputs.property('java', javaLauncher.map { it.executablePath.asFile.absolutePath })
+	inputs.property('classpath', provider { classpath.files.collect { it.absolutePath }.join(':') })
+	inputs.property('source', source.absolutePath)
 	outputs.dir binDir
 	doLast {
 		def java = javaLauncher.get().executablePath.asFile.absolutePath

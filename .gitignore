@@ -1,6 +1,6 @@
-/obj/
-/test_styx
-/test_gate
-/styxcpp-*.tar.gz
+/cpp/obj/
+/cpp/test_styx
+/cpp/test_gate
+/cpp/styxcpp-*.tar.gz
 /java/build/
 /java/.gradle/

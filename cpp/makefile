@@ -1,10 +1,12 @@
-# Styx for the C++ Lua of payonel/lua (branch lua-c++), built against its
+# Styx for the C++ Lua of payonel/lua (branch lungolua), built against its
 # packages: lungoluacpp (release) or lungoluacpp-tests (the engine's debug
 # build, with its test library and test scripts), downloaded from GitHub
 # Packages into DEPS_DIR once per version. 'make', 'make debug', 'make test'
 # ('make debug test' for the debug build). Credentials: gpr.user and
 # gpr.key in ~/.gradle/gradle.properties, or GITHUB_ACTOR and GITHUB_TOKEN.
-LUNGOLUACPP_VERSION ?= 1.0.0-e6a648d6
+# The version is the Java build's (lungolua_version in java/gradle.properties):
+# the engine's packages of a commit share it.
+LUNGOLUACPP_VERSION ?= $(shell sed -n 's/^lungolua_version=//p' ../java/gradle.properties)
 
 VARIANT       = release
 ifeq ($(findstring debug,$(MAKECMDGOALS)),debug)
@@ -114,7 +116,7 @@ test: $(TEST_T) $(GATE_T) $(TESTS_DIR)/flags.mk
 	$(RM) -r $(RUN_DIR)
 	mkdir -p $(RUN_DIR)
 	cp -r $(TESTS_DIR)/tests/. $(RUN_DIR)/
-	cp -r tests/styx $(RUN_DIR)/styx
+	cp -r ../tests/styx $(RUN_DIR)/styx
 	cd $(RUN_DIR)/styx && $(CURDIR)/$(TEST_T)
 	cd $(RUN_DIR) && GATE_LUA=$(ENGINE_DIR)/bin/lua $(CURDIR)/$(GATE_T) 97 --styx $(STYX_GATE_DEEP) deep/all.lua
 	mkdir -p $(RUN_DIR)/libs/_$(TEST_TEMP_DIR)/P1

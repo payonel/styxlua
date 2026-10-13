@@ -3,10 +3,9 @@ name: styxlua
 on:
   push:
     branches: [master]
-    paths:
-      - 'java/**'
-      - 'tests/styx/**'
-      - '.github/workflows/styxlua.yml'
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
   workflow_dispatch:
 
 permissions:
