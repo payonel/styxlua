@@ -1,0 +1,136 @@
+plugins {
+	id 'java-library'
+	id 'maven-publish'
+}
+
+group = 'com.payonel'
+version = providers.gradleProperty('styxlua_version').get()
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+	withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+	options.release = 21
+	options.encoding = 'UTF-8'
+	options.compilerArgs += ['-Xlint:all', '-Xlint:-serial', '-Xlint:-fallthrough', '-Xlint:-cast']
+}
+
+def gpr = { String property, String variable ->
+	providers.gradleProperty(property).orElse(providers.environmentVariable(variable)).getOrNull()
+}
+
+repositories {
+	if (providers.gradleProperty('useMavenLocal').isPresent()) {
+		mavenLocal()
+	}
+	maven {
+		name = 'LungoLua'
+		url = 'https://maven.pkg.github.com/payonel/lua'
+		credentials {
+			username = gpr('gpr.user', 'GITHUB_ACTOR')
+			password = gpr('gpr.key', 'GITHUB_TOKEN')
+		}
+		content {
+			includeModule 'com.payonel', 'lungolua'
+			includeModule 'com.payonel', 'lungolua-tests'
+		}
+	}
+}
+
+dependencies {
+	api "com.payonel:lungolua:${project.lungolua_version}"
+	testImplementation "com.payonel:lungolua-tests:${project.lungolua_version}"
+}
+
+def debug = providers.gradleProperty('debug').isPresent()
+def javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+def binDir = layout.buildDirectory.dir('bin')
+def runDir = layout.buildDirectory.dir('lua-tests')
+
+// the launchers the tests run as programs: the engine's interpreter (the
+// child the deep tests start), the Styx tests (which start themselves
+// again) and the Styx gate
+tasks.register('launchers') {
+	dependsOn 'testClasses'
+	def classpath = sourceSets.test.runtimeClasspath
+	def source = file('src/test/java/com/payonel/styxlua/tests/StyxTests.java')
+	outputs.dir binDir
+	doLast {
+		def java = javaLauncher.get().executablePath.asFile.absolutePath
+		def cp = classpath.files.collect { it.absolutePath }.join(':')
+		def flags = '--enable-native-access=ALL-UNNAMED' + (debug ? ' -ea -Dlua.debug=true' : '')
+		def bin = binDir.get().asFile
+		bin.mkdirs()
+		def write = { String name, String body ->
+			def f = new File(bin, name)
+			f.text = "#!/bin/sh\n" + body + "\n"
+			f.setExecutable(true)
+		}
+		write('lua', "exec '${java}' ${flags} -cp '${cp}' com.payonel.lungolua.host.Lua \"\$@\"")
+		write('test_styx', "exec '${java}' ${flags} -Dstyx.self=\"\$0\" -Dstyx.source='${source}' -cp '${cp}' com.payonel.styxlua.tests.StyxTests \"\$@\"")
+		write('test_gate', "GATE_LUA=\${GATE_LUA:-'${bin}/lua'} exec '${java}' ${flags} -cp '${cp}' com.payonel.styxlua.tests.Gate \"\$@\"")
+	}
+}
+
+// the engine's test scripts (from lungolua-tests) with Styx's added
+tasks.register('luaTests', Sync) {
+	def testsJar = configurations.testRuntimeClasspath.filter { it.name.startsWith('lungolua-tests') }
+	from({ zipTree(testsJar.singleFile) }) {
+		include 'tests/**'
+		eachFile { path = path.substring('tests/'.length()) }
+		includeEmptyDirs = false
+	}
+	from('../tests/styx') {
+		into 'styx'
+	}
+	into runDir
+}
+
+def styxGateDeep = providers.gradleProperty('styxGateDeep').getOrElse('7')
+def styxGateAll = providers.gradleProperty('styxGateAll').getOrElse('5000')
+
+tasks.register('styxTests', Exec) {
+	dependsOn 'launchers', 'luaTests'
+	workingDir runDir.map { it.dir('styx') }
+	commandLine binDir.get().file('test_styx').asFile.absolutePath
+}
+
+tasks.register('styxGate', Exec) {
+	dependsOn 'launchers', 'luaTests'
+	mustRunAfter 'styxTests'
+	workingDir runDir
+	commandLine 'sh', '-c', "mkdir -p libs/_1/P1 && " +
+		"'${binDir.get().file('test_gate').asFile}' 97 --styx ${styxGateDeep} deep/all.lua && " +
+		"cat /dev/null | '${binDir.get().file('test_gate').asFile}' 97 --styx ${styxGateAll} all.lua"
+}
+
+tasks.named('test') {
+	enabled = false
+}
+
+tasks.named('check') {
+	dependsOn 'styxTests', 'styxGate'
+}
+
+publishing {
+	publications {
+		maven(MavenPublication) {
+			from components.java
+			artifactId = 'styxlua'
+		}
+	}
+	repositories {
+		maven {
+			name = 'GitHubPackages'
+			url = 'https://maven.pkg.github.com/payonel/styxlua'
+			credentials {
+				username = gpr('gpr.user', 'GITHUB_ACTOR')
+				password = gpr('gpr.key', 'GITHUB_TOKEN')
+			}
+		}
+	}
+}

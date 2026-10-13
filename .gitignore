@@ -2,3 +2,5 @@
 /test_styx
 /test_gate
 /styxcpp-*.tar.gz
+/java/build/
+/java/.gradle/
