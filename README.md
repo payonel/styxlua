@@ -34,12 +34,12 @@ repositories {
 }
 
 dependencies {
-	implementation 'com.payonel:styxlua:1.0.0-<commit>'
+	implementation 'com.payonel:styxlua:<version>'
 	implementation 'com.payonel:lungolua:<the version styxlua was built with>'
 }
 ```
 
-From C++: `com.payonel:styxcpp:1.0.0-<commit>` is a `.tar.gz` of
+From C++: `com.payonel:styxcpp:<version>` is a `.tar.gz` of
 `include/lstyx.h`, `lib/libstyx.a` and `flags.mk` (the engine version it
 was built with), to link with that version's `com.payonel:lungoluacpp`.
 
@@ -66,5 +66,7 @@ make debug test          # the same with the engine's debug build
 A change to `cpp/` comes with its port to `java/`, pushed together.
 
 Each push to `master` builds and tests both and publishes
-`com.payonel:styxlua:1.0.0-<commit>` and `com.payonel:styxcpp:1.0.0-<commit>`
-to this repository's packages.
+`com.payonel:styxlua` and `com.payonel:styxcpp` to this repository's
+packages, both as `1.0.<the number of commits on master>-<the commit's
+first 8 hex digits>`, so a later commit's version is higher, as Gradle and
+Maven order versions. The engine versions follow the same rule.

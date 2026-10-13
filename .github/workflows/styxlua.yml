@@ -17,6 +17,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: The version (the branch's commits, then the commit)
+        run: echo "VERSION=1.0.$(git rev-list --count HEAD)-${GITHUB_SHA::8}" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v4
         with:
@@ -28,6 +33,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          version="1.0.0-${GITHUB_SHA::8}"
+          version="$VERSION"
           ./gradlew --no-daemon check publish -Pstyxlua_version="$version"
           echo "Published com.payonel:styxlua:$version" >> "$GITHUB_STEP_SUMMARY"
