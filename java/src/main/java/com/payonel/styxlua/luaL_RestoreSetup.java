@@ -3,7 +3,7 @@ package com.payonel.styxlua;
 import com.payonel.lungolua.runtime.lua_State;
 
 /*
-** The kernel's restore, in one call: a new state with allocator 'f', which
+** The firmware's restore, in one call: a new state with allocator 'f', which
 ** hashes as the persisting state did (its tables keep their order), set
 ** up by 'setup' (if given), which opens the same libraries and makes the
 ** host's permanents, in the same order as for the persisting state, and

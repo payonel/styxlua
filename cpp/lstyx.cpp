@@ -482,7 +482,7 @@ public:
   ** of the state until their finalizers run (ADR-28). Permanents are the
   ** restoring host's own objects.
   */
-  /* a whole state is persisted (the kernel's functions are part of it) */
+  /* a whole state is persisted (the firmware's functions are part of it) */
   void whole() { whole_ = true; }
 
   void marked_objects()
@@ -533,7 +533,7 @@ public:
     u32(L_->l_G->nexthash);
   }
 
-  bool check_ = false; /* (only checks what it could write, while the kernel runs) */
+  bool check_ = false; /* (only checks what it could write, while the firmware runs) */
   bool found_ = false;  /* (what a walk of the collector's lists found) */
   size_t count_ = 0;    /* (and counted) */
 private:
@@ -647,7 +647,7 @@ private:
   }
 
   /*
-  ** Who a marked object belongs to, in the trailer: 0 for the kernel and the
+  ** Who a marked object belongs to, in the trailer: 0 for the firmware and the
   ** host, 1 for a group that is gone (the object is then an ordinary one
   ** when it is collected, as in the persisting state), and 2 plus the
   ** reference id of its group.
@@ -1343,7 +1343,7 @@ private:
       fail(lt::cannot_persist_a_budget_callback_that_has_no_name);
     TValue key{};
     if (!whole_ && !ttisnil(&bg->cb) && !perm_key(bg->cb, &key))
-      fail(lt::cannot_persist_a_budget_callback_that_is_not_a_permanent); /* (the kernel's own function) */
+      fail(lt::cannot_persist_a_budget_callback_that_is_not_a_permanent); /* (the firmware's own function) */
     byte(TAG_GROUP);
     var(bg->budget);
     global_State* g = L_->l_G;
@@ -1699,7 +1699,7 @@ private:
       return;
     }
     if (check_ && is_running(T))
-    { /* (a check while the kernel runs: the host persists it at rest) */
+    { /* (a check while the firmware runs: the host persists it at rest) */
       byte(TAG_MAINTHREAD);
       return;
     }
@@ -4242,8 +4242,8 @@ struct NullWriter : lua_Writer
 ** Can a persist of the state write all that the value at 'idx' holds
 ** ('perms': the stack index of the permanents, or 0)? The walk of a host
 ** persist, writing nothing: no Lua code runs and nothing is allocated in
-** the state, so a running kernel can ask it of a user program. If not,
-** the message says why, with the path of what cannot be written.
+** the state, so the running firmware can ask it of a user program. If
+** not, the message says why, with the path of what cannot be written.
 */
 luaL_StyxResult lua_styxcheck(lua_State* L, int idx, int perms)
 {
@@ -4408,9 +4408,9 @@ int lua_styxtestmodule(lua_State* L)
 
 /*
 ** styx.persistable(v [, permanents]): true if a persist of the state can
-** write all that 'v' holds (a kernel asks it of a user program, to find the
-** one that keeps what cannot be persisted); otherwise false and why, with
-** the path of what cannot be written. 'permanents' is the kernel's table
+** write all that 'v' holds (the firmware asks it of a user program, to find
+** the one that keeps what cannot be persisted); otherwise false and why, with
+** the path of what cannot be written. 'permanents' is the firmware's table
 ** of permanents (object -> name), as the host gives it to its persist.
 */
 static int styx_persistable(lua_State* L)

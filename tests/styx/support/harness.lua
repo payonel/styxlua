@@ -223,7 +223,7 @@ function H.stream(body, marked, dead)
   local t = {H.varint(#marked)}
   for _ in ipairs(marked) do t[#t + 1] = H.varint(0) end -- (their kinds: tables)
   for _, id in ipairs(marked) do t[#t + 1] = H.varint(id) end
-  for _ in ipairs(marked) do t[#t + 1] = H.varint(0) end -- (their owners: the kernel's)
+  for _ in ipairs(marked) do t[#t + 1] = H.varint(0) end -- (their owners: the firmware's)
   for _ in ipairs(marked) do t[#t + 1] = H.varint(0) end -- (and none of them due)
   t[#t + 1] = H.varint(#dead)
   for _, d in ipairs(dead) do

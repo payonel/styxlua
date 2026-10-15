@@ -3,8 +3,8 @@ package com.payonel.styxlua;
 import com.payonel.lungolua.api.HostString;
 
 /*
-** Styx: the kernel's persistence. The host persists the whole state while
-** it is at rest (no Lua code runs: the kernel has frozen or suspended its
+** Styx: the firmware's persistence. The host persists the whole state while
+** it is at rest (no Lua code runs: the firmware has frozen or suspended its
 ** programs and yielded back to the host) and restores it into a new
 ** state; what it needs back it anchors in the registry (the main thread's
 ** stack is not part of a state). Scripts cannot persist.

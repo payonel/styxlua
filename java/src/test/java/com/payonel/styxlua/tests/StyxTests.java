@@ -1903,15 +1903,15 @@ end
       "end) " +
       "debug.setbudget(co, 1000000, function() end) " +
       "assert(coroutine.resume(co)) " +
-      "kernel = setmetatable({}, {__gc = function() log[#log + 1] = 'kernel' end}) " +
-      "kernel = nil " +
-      "collectgarbage() " + /* (the kernel runs: the dead objects of the group wait in its queue) */
+      "firmware = setmetatable({}, {__gc = function() log[#log + 1] = 'firmware' end}) " +
+      "firmware = nil " +
+      "collectgarbage() " + /* (the firmware runs: the dead objects of the group wait in its queue) */
       "return #log";
     CountingAlloc a1 = new CountingAlloc();
     lua_State A = new_counted_state(a1);
     CHECK(eval(A, build_perms).equals("ok"));
-    CHECK(eval(A, script).equals("1"));              /* only the kernel's ran */
-    CHECK(eval(A, "return log[1]").equals("kernel"));
+    CHECK(eval(A, script).equals("1"));              /* only the firmware's ran */
+    CHECK(eval(A, "return log[1]").equals("firmware"));
     String blob = persist_state(A);
     CHECK(!blob.isEmpty());
     CountingAlloc a2 = new CountingAlloc();
@@ -2054,7 +2054,7 @@ end
     }
     CHECK(finished && failures > 50);
     /* a script's persist of the frozen chain: the n-th growth fails (the
-       budget callback, the kernel's, is a permanent) */
+       budget callback, the firmware's, is a permanent) */
     CHECK(eval(A, "_PERMS[select(2, debug.getbudget(co))] = 'cb' return 'ok'").equals("ok"));
     failures = 0;
     finished = false;
@@ -2253,7 +2253,7 @@ end
   /*
   ** A user object that a program (budgeted code) marked for finalization is
   ** the program's: restored, it still is. Its '__gc' runs as user code, where
-  ** the program can freeze, not at once as a kernel's would (with the budget
+  ** the program can freeze, not at once as the firmware's would (with the budget
   ** lifted, where nothing can freeze).
   */
   private static int owner_canfreeze = -1; /* what 'debug.canfreeze' said in the '__gc' */
@@ -2626,16 +2626,16 @@ end
   }
 
   /*
-  ** The kernel's persistence, as a host does it: a kernel coroutine runs the
+  ** The firmware's persistence, as a host does it: a firmware coroutine runs the
   ** user programs, each with its budget, freezes them in its callback or
   ** lets them suspend, and yields back to the host; the host persists the
   ** whole state there, and restores it with luaL_restorestate into a new
   ** state (which hashes as the original: no seed to give), where it resumes
-  ** the kernel from its anchor in the registry. Both go on exactly as a run
+  ** the firmware from its anchor in the registry. Both go on exactly as a run
   ** with no persist: tables with churn iterate in their order, a load and a
   ** match stopped in their middle go on.
   */
-  private static final String kernel_script = """
+  private static final String firmware_script = """
 
 local function user1()
   local t = {}
@@ -2681,7 +2681,7 @@ local function user4()
   for f in pairs(t) do coroutine.yield(names[f]) end
   return "u4 done"
 end
-local kernel = coroutine.create(function()
+local firmware = coroutine.create(function()
   local users = {}
   for u, f in ipairs{user1, user2, user3, user4} do
     local co = coroutine.create(f)
@@ -2711,11 +2711,11 @@ local kernel = coroutine.create(function()
   for u, user in ipairs(users) do parts[u] = table.concat(user.out, ",") end
   return table.concat(parts, " | ")
 end)
-debug.getregistry().kernel = kernel -- (the host's anchor)
+debug.getregistry().firmware = firmware -- (the host's anchor)
 """;
 
   /* the host's setup of a state to restore into: the same libraries and permanents */
-  private static void kernel_setup(lua_State L)
+  private static void firmware_setup(lua_State L)
   {
     luaL_openlibs(L);
     preload_styx(L);
@@ -2723,20 +2723,20 @@ debug.getregistry().kernel = kernel -- (the host's anchor)
     lua_getglobal(L, new HostString("_BACK"));
   }
 
-  private static lua_State kernel_state(CountingAlloc a, int seed)
+  private static lua_State firmware_state(CountingAlloc a, int seed)
   {
     lua_State L = lua_newstate(a, seed);
     luaL_openlibs(L);
     preload_styx(L);
     CHECK(eval(L, build_perms).equals("ok"));
-    eval(L, kernel_script);
+    eval(L, firmware_script);
     return L;
   }
 
-  /* the host resumes the kernel once: true when it ended (its transcript) */
-  private static boolean kernel_step(lua_State L, String[] transcript)
+  /* the host resumes the firmware once: true when it ended (its transcript) */
+  private static boolean firmware_step(lua_State L, String[] transcript)
   {
-    lua_getfield(L, LUA_REGISTRYINDEX, new HostString("kernel"));
+    lua_getfield(L, LUA_REGISTRYINDEX, new HostString("firmware"));
     lua_State K = lua_tothread(L, -1);
     lua_pop(L, 1);
     lua_ResumeResult r = lua_resume(K, L, 0);
@@ -2751,7 +2751,7 @@ debug.getregistry().kernel = kernel -- (the host's anchor)
     return true;
   }
 
-  private static String persist_kernel(lua_State L)
+  private static String persist_firmware(lua_State L)
   {
     lua_getglobal(L, new HostString("_PERMS"));
     StringWriter w = new StringWriter();
@@ -2764,13 +2764,13 @@ debug.getregistry().kernel = kernel -- (the host's anchor)
     return w.out.toString();
   }
 
-  private static void test_kernel_persistence()
+  private static void test_firmware_persistence()
   {
     String[] plain = {""};
     {
       CountingAlloc a = new CountingAlloc();
-      lua_State L = kernel_state(a, 777);
-      while (!kernel_step(L, plain))
+      lua_State L = firmware_state(a, 777);
+      while (!firmware_step(L, plain))
       {
       }
       lua_close(L);
@@ -2780,21 +2780,21 @@ debug.getregistry().kernel = kernel -- (the host's anchor)
     for (int k = 1; k < 10000; k++)
     {
       CountingAlloc a1 = new CountingAlloc();
-      lua_State A = kernel_state(a1, 777);
+      lua_State A = firmware_state(a1, 777);
       String[] ta = {""}, tb = {""};
       boolean done = false;
       for (int i = 0; i < k && !done; i++)
-        done = kernel_step(A, ta);
+        done = firmware_step(A, ta);
       if (done)
       {
         lua_close(A);
         break;
       }
       persisted++;
-      String blob = persist_kernel(A);
+      String blob = persist_firmware(A);
       CountingAlloc a2 = new CountingAlloc();
       HostStringOut msg = new HostStringOut();
-      lua_State B = restorestate(a2, view(blob), StyxTests::kernel_setup, msg);
+      lua_State B = restorestate(a2, view(blob), StyxTests::firmware_setup, msg);
       CHECK(B != null);
       if (B == null)
       {
@@ -2802,10 +2802,10 @@ debug.getregistry().kernel = kernel -- (the host's anchor)
         lua_close(A);
         break;
       }
-      while (!kernel_step(A, ta))
+      while (!firmware_step(A, ta))
       {
       }
-      while (!kernel_step(B, tb))
+      while (!firmware_step(B, tb))
       {
       }
       if (!ta[0].equals(plain[0]) || !tb[0].equals(plain[0]))
@@ -2820,15 +2820,15 @@ debug.getregistry().kernel = kernel -- (the host's anchor)
   }
 
   /*
-  ** The kernel's state restored in another process (its own addresses, the
+  ** The firmware's state restored in another process (its own addresses, the
   ** same library): the host persists it to a file and the child restores it
-  ** with luaL_restorestate and runs the kernel to its end; a table keyed by
+  ** with luaL_restorestate and runs the firmware to its end; a table keyed by
   ** library functions keeps its order there (they hash by name).
   */
   private static String g_self = "../../java/test_styx";
 
-  /* the child: restores the kernel's state in 'file' and prints its transcript */
-  private static int restore_kernel_child(String file)
+  /* the child: restores the firmware's state in 'file' and prints its transcript */
+  private static int restore_firmware_child(String file)
   {
     OsFile f = os_fopen(new HostString(file).to_utf8(), ByteView.of("rb")).f;
     if (f == null)
@@ -2841,14 +2841,14 @@ debug.getregistry().kernel = kernel -- (the host's anchor)
     os_fclose(f);
     CountingAlloc a = new CountingAlloc();
     HostStringOut msg = new HostStringOut();
-    lua_State L = restorestate(a, view(blob), StyxTests::kernel_setup, msg);
+    lua_State L = restorestate(a, view(blob), StyxTests::firmware_setup, msg);
     if (L == null)
     {
       printf("restore error: %s", msg.to_os());
       return 1;
     }
     String[] t = {""};
-    while (!kernel_step(L, t))
+    while (!firmware_step(L, t))
     {
     }
     printf("%s", t[0]);
@@ -2868,13 +2868,13 @@ debug.getregistry().kernel = kernel -- (the host's anchor)
     return Path.of("/tmp");
   }
 
-  private static void test_kernel_in_another_process()
+  private static void test_firmware_in_another_process()
   {
     String[] plain = {""};
     {
       CountingAlloc a = new CountingAlloc();
-      lua_State L = kernel_state(a, 4242);
-      while (!kernel_step(L, plain))
+      lua_State L = firmware_state(a, 4242);
+      while (!firmware_step(L, plain))
       {
       }
       lua_close(L);
@@ -2884,21 +2884,21 @@ debug.getregistry().kernel = kernel -- (the host's anchor)
     for (int k : new int[] {1, 3, 8})
     {
       CountingAlloc a = new CountingAlloc();
-      lua_State A = kernel_state(a, 4242);
+      lua_State A = firmware_state(a, 4242);
       String[] t = {""};
       for (int i = 0; i < k; i++)
-        kernel_step(A, t);
-      String blob = persist_kernel(A);
+        firmware_step(A, t);
+      String blob = persist_firmware(A);
       lua_close(A);
-      String file = dir.resolve("styx_kernel_" + k + ".bin").toString();
-      String out = dir.resolve("styx_kernel_" + k + ".txt").toString();
+      String file = dir.resolve("styx_firmware_" + k + ".bin").toString();
+      String out = dir.resolve("styx_firmware_" + k + ".txt").toString();
       OsFile f = os_fopen(new HostString(file).to_utf8(), ByteView.of("wb")).f;
       CHECK(f != null);
       if (f == null)
         continue;
       os_fwrite(f, view(blob));
       os_fclose(f);
-      String cmd = g_self + " --restore-kernel " + file + " > " + out;
+      String cmd = g_self + " --restore-firmware " + file + " > " + out;
       CHECK(os_system(new HostString(cmd).to_utf8()).stat == 0);
       String got = "";
       OsFile o = os_fopen(new HostString(out).to_utf8(), ByteView.of("rb")).f;
@@ -3097,10 +3097,10 @@ debug.getregistry().kernel = kernel -- (the host's anchor)
   private static void test_restore_errors()
   {
     CountingAlloc a1 = new CountingAlloc();
-    lua_State A = kernel_state(a1, 99);
+    lua_State A = firmware_state(a1, 99);
     String[] t = {""};
-    kernel_step(A, t);
-    String blob = persist_kernel(A);
+    firmware_step(A, t);
+    String blob = persist_firmware(A);
     lua_close(A);
     final class Bad
     {
@@ -3116,10 +3116,10 @@ debug.getregistry().kernel = kernel -- (the host's anchor)
       }
     }
     Bad[] bad = {
-      new Bad("not a stream", StyxTests::kernel_setup, "not a persisted state"),
+      new Bad("not a stream", StyxTests::firmware_setup, "not a persisted state"),
       new Bad(blob, StyxTests::push_one, "the setup must leave the permanents table (key -> object) or nil"),
       new Bad(blob, StyxTests::raise_error, "no setup here"),
-      new Bad(blob.substring(0, blob.length() / 2), StyxTests::kernel_setup, "invalid persisted data"),
+      new Bad(blob.substring(0, blob.length() / 2), StyxTests::firmware_setup, "invalid persisted data"),
     };
     for (Bad b : bad)
     {
@@ -3201,8 +3201,8 @@ debug.getregistry().kernel = kernel -- (the host's anchor)
         new TestEntry("frozen_main_thread_restored_at_rest", StyxTests::test_frozen_main_thread_restored_at_rest),
         new TestEntry("frozen_main_thread_close", StyxTests::test_frozen_main_thread_close),
         new TestEntry("frozen_corrupted_streams", StyxTests::test_frozen_corrupted_streams),
-        new TestEntry("kernel_persistence", StyxTests::test_kernel_persistence),
-        new TestEntry("kernel_in_another_process", StyxTests::test_kernel_in_another_process),
+        new TestEntry("firmware_persistence", StyxTests::test_firmware_persistence),
+        new TestEntry("firmware_in_another_process", StyxTests::test_firmware_in_another_process),
         new TestEntry("thread_at_stack_limit", StyxTests::test_thread_at_stack_limit),
         new TestEntry("restore_collects", StyxTests::test_restore_collects),
         new TestEntry("persist_from_held_thread", StyxTests::test_persist_from_held_thread),
@@ -3308,9 +3308,9 @@ debug.getregistry().kernel = kernel -- (the host's anchor)
 
   public static void main(String[] args)
   {
-    if (args.length == 2 && args[0].equals("--restore-kernel"))
+    if (args.length == 2 && args[0].equals("--restore-firmware"))
     {
-      exit(restore_kernel_child(args[1]));
+      exit(restore_firmware_child(args[1]));
       return;
     }
     String self = System.getProperty("styx.self");

@@ -3,8 +3,8 @@
 #include "lua.h"
 
 /*
-** Styx: the kernel's persistence. The host persists the whole state while
-** it is at rest (no Lua code runs: the kernel has frozen or suspended its
+** Styx: the firmware's persistence. The host persists the whole state while
+** it is at rest (no Lua code runs: the firmware has frozen or suspended its
 ** programs and yielded back to the host) and restores it into a new
 ** state; what it needs back it anchors in the registry (the main thread's
 ** stack is not part of a state). Scripts cannot persist.
@@ -24,7 +24,7 @@ struct luaL_StyxResult
 luaL_StyxResult(luaL_persiststate)(lua_State* L, int perms, lua_Writer* w);
 
 /*
-** The kernel's restore, in one call: a new state with allocator 'f', which
+** The firmware's restore, in one call: a new state with allocator 'f', which
 ** hashes as the persisting state did (its tables keep their order), set
 ** up by 'setup' (if given), which opens the same libraries and makes the
 ** host's permanents, in the same order as for the persisting state, and

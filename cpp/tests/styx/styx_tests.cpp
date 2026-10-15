@@ -1699,15 +1699,15 @@ static void test_frozen_deferred_gc()
     "end) "
     "debug.setbudget(co, 1000000, function() end) "
     "assert(coroutine.resume(co)) "
-    "kernel = setmetatable({}, {__gc = function() log[#log + 1] = 'kernel' end}) "
-    "kernel = nil "
-    "collectgarbage() " /* (the kernel runs: the dead objects of the group wait in its queue) */
+    "firmware = setmetatable({}, {__gc = function() log[#log + 1] = 'firmware' end}) "
+    "firmware = nil "
+    "collectgarbage() " /* (the firmware runs: the dead objects of the group wait in its queue) */
     "return #log";
   CountingAlloc a1;
   lua_State* A = new_counted_state(&a1);
   CHECK(eval(A, build_perms) == "ok");
-  CHECK(eval(A, script) == "1");              /* only the kernel's ran */
-  CHECK(eval(A, "return log[1]") == "kernel");
+  CHECK(eval(A, script) == "1");              /* only the firmware's ran */
+  CHECK(eval(A, "return log[1]") == "firmware");
   std::string blob = persist_state(A);
   CHECK(!blob.empty());
   CountingAlloc a2;
@@ -1846,7 +1846,7 @@ static void test_frozen_allocation_failures()
   }
   CHECK(finished && failures > 50);
   /* a script's persist of the frozen chain: the n-th growth fails (the
-     budget callback, the kernel's, is a permanent) */
+     budget callback, the firmware's, is a permanent) */
   CHECK(eval(A, "_PERMS[select(2, debug.getbudget(co))] = 'cb' return 'ok'") == "ok");
   failures = 0;
   finished = false;
@@ -2018,7 +2018,7 @@ static void test_user_object_kind()
 /*
 ** A user object that a program (budgeted code) marked for finalization is
 ** the program's: restored, it still is. Its '__gc' runs as user code, where
-** the program can freeze, not at once as a kernel's would (with the budget
+** the program can freeze, not at once as the firmware's would (with the budget
 ** lifted, where nothing can freeze).
 */
 static int owner_canfreeze = -1; /* what 'debug.canfreeze' said in the '__gc' */
@@ -2383,16 +2383,16 @@ static void test_frozen_corrupted_streams()
 }
 
 /*
-** The kernel's persistence, as a host does it: a kernel coroutine runs the
+** The firmware's persistence, as a host does it: a firmware coroutine runs the
 ** user programs, each with its budget, freezes them in its callback or
 ** lets them suspend, and yields back to the host; the host persists the
 ** whole state there, and restores it with luaL_restorestate into a new
 ** state (which hashes as the original: no seed to give), where it resumes
-** the kernel from its anchor in the registry. Both go on exactly as a run
+** the firmware from its anchor in the registry. Both go on exactly as a run
 ** with no persist: tables with churn iterate in their order, a load and a
 ** match stopped in their middle go on.
 */
-static const char* const kernel_script = R"LUA(
+static const char* const firmware_script = R"LUA(
 local function user1()
   local t = {}
   for i = 1, 120 do t["k" .. (i * 7 % 200)] = i end
@@ -2437,7 +2437,7 @@ local function user4()
   for f in pairs(t) do coroutine.yield(names[f]) end
   return "u4 done"
 end
-local kernel = coroutine.create(function()
+local firmware = coroutine.create(function()
   local users = {}
   for u, f in ipairs{user1, user2, user3, user4} do
     local co = coroutine.create(f)
@@ -2467,11 +2467,11 @@ local kernel = coroutine.create(function()
   for u, user in ipairs(users) do parts[u] = table.concat(user.out, ",") end
   return table.concat(parts, " | ")
 end)
-debug.getregistry().kernel = kernel -- (the host's anchor)
+debug.getregistry().firmware = firmware -- (the host's anchor)
 )LUA";
 
 /* the host's setup of a state to restore into: the same libraries and permanents */
-static void kernel_setup(lua_State* L)
+static void firmware_setup(lua_State* L)
 {
   luaL_openlibs(L);
   preload_styx(L);
@@ -2479,20 +2479,20 @@ static void kernel_setup(lua_State* L)
   lua_getglobal(L, "_BACK");
 }
 
-static lua_State* kernel_state(CountingAlloc* a, unsigned int seed)
+static lua_State* firmware_state(CountingAlloc* a, unsigned int seed)
 {
   lua_State* L = lua_newstate(a, seed);
   luaL_openlibs(L);
   preload_styx(L);
   CHECK(eval(L, build_perms) == "ok");
-  eval(L, kernel_script);
+  eval(L, firmware_script);
   return L;
 }
 
-/* the host resumes the kernel once: true when it ended (its transcript) */
-static bool kernel_step(lua_State* L, std::string* transcript)
+/* the host resumes the firmware once: true when it ended (its transcript) */
+static bool firmware_step(lua_State* L, std::string* transcript)
 {
-  lua_getfield(L, LUA_REGISTRYINDEX, "kernel");
+  lua_getfield(L, LUA_REGISTRYINDEX, "firmware");
   lua_State* K = lua_tothread(L, -1);
   lua_pop(L, 1);
   lua_ResumeResult r = lua_resume(K, L, 0);
@@ -2507,7 +2507,7 @@ static bool kernel_step(lua_State* L, std::string* transcript)
   return true;
 }
 
-static std::string persist_kernel(lua_State* L)
+static std::string persist_firmware(lua_State* L)
 {
   lua_getglobal(L, "_PERMS");
   StringWriter w;
@@ -2520,13 +2520,13 @@ static std::string persist_kernel(lua_State* L)
   return w.out;
 }
 
-static void test_kernel_persistence()
+static void test_firmware_persistence()
 {
   std::string plain;
   {
     CountingAlloc a;
-    lua_State* L = kernel_state(&a, 777);
-    while (!kernel_step(L, &plain))
+    lua_State* L = firmware_state(&a, 777);
+    while (!firmware_step(L, &plain))
     {
     }
     lua_close(L);
@@ -2536,21 +2536,21 @@ static void test_kernel_persistence()
   for (int k = 1; k < 10000; k++)
   {
     CountingAlloc a1;
-    lua_State* A = kernel_state(&a1, 777);
+    lua_State* A = firmware_state(&a1, 777);
     std::string ta, tb;
     bool done = false;
     for (int i = 0; i < k && !done; i++)
-      done = kernel_step(A, &ta);
+      done = firmware_step(A, &ta);
     if (done)
     {
       lua_close(A);
       break;
     }
     persisted++;
-    std::string blob = persist_kernel(A);
+    std::string blob = persist_firmware(A);
     CountingAlloc a2;
     HostString msg;
-    lua_State* B = restorestate(&a2, byte_view(blob.data(), blob.size()), kernel_setup, &msg);
+    lua_State* B = restorestate(&a2, byte_view(blob.data(), blob.size()), firmware_setup, &msg);
     CHECK(B != nullptr);
     if (B == nullptr)
     {
@@ -2558,10 +2558,10 @@ static void test_kernel_persistence()
       lua_close(A);
       break;
     }
-    while (!kernel_step(A, &ta))
+    while (!firmware_step(A, &ta))
     {
     }
-    while (!kernel_step(B, &tb))
+    while (!firmware_step(B, &tb))
     {
     }
     if (ta != plain || tb != plain)
@@ -2576,15 +2576,15 @@ static void test_kernel_persistence()
 }
 
 /*
-** The kernel's state restored in another process (its own addresses, the
+** The firmware's state restored in another process (its own addresses, the
 ** same library): the host persists it to a file and the child restores it
-** with luaL_restorestate and runs the kernel to its end; a table keyed by
+** with luaL_restorestate and runs the firmware to its end; a table keyed by
 ** library functions keeps its order there (they hash by name).
 */
 static const char* g_self = "../../test_styx";
 
-/* the child: restores the kernel's state in 'file' and prints its transcript */
-static int restore_kernel_child(const char* file)
+/* the child: restores the firmware's state in 'file' and prints its transcript */
+static int restore_firmware_child(const char* file)
 {
   std::FILE* f = std::fopen(file, "rb");
   if (f == nullptr)
@@ -2597,14 +2597,14 @@ static int restore_kernel_child(const char* file)
   std::fclose(f);
   CountingAlloc a;
   HostString msg;
-  lua_State* L = restorestate(&a, byte_view(blob.data(), blob.size()), kernel_setup, &msg);
+  lua_State* L = restorestate(&a, byte_view(blob.data(), blob.size()), firmware_setup, &msg);
   if (L == nullptr)
   {
     std::printf("restore error: %s", msg.to_os());
     return 1;
   }
   std::string t;
-  while (!kernel_step(L, &t))
+  while (!firmware_step(L, &t))
   {
   }
   std::printf("%s", t.c_str());
@@ -2612,13 +2612,13 @@ static int restore_kernel_child(const char* file)
   return 0;
 }
 
-static void test_kernel_in_another_process()
+static void test_firmware_in_another_process()
 {
   std::string plain;
   {
     CountingAlloc a;
-    lua_State* L = kernel_state(&a, 4242);
-    while (!kernel_step(L, &plain))
+    lua_State* L = firmware_state(&a, 4242);
+    while (!firmware_step(L, &plain))
     {
     }
     lua_close(L);
@@ -2628,21 +2628,21 @@ static void test_kernel_in_another_process()
   for (int k : {1, 3, 8})
   {
     CountingAlloc a;
-    lua_State* A = kernel_state(&a, 4242);
+    lua_State* A = firmware_state(&a, 4242);
     std::string t;
     for (int i = 0; i < k; i++)
-      kernel_step(A, &t);
-    std::string blob = persist_kernel(A);
+      firmware_step(A, &t);
+    std::string blob = persist_firmware(A);
     lua_close(A);
-    std::string file = (dir / ("styx_kernel_" + std::to_string(k) + ".bin")).string();
-    std::string out = (dir / ("styx_kernel_" + std::to_string(k) + ".txt")).string();
+    std::string file = (dir / ("styx_firmware_" + std::to_string(k) + ".bin")).string();
+    std::string out = (dir / ("styx_firmware_" + std::to_string(k) + ".txt")).string();
     std::FILE* f = std::fopen(file.c_str(), "wb");
     CHECK(f != nullptr);
     if (f == nullptr)
       continue;
     std::fwrite(blob.data(), 1, blob.size(), f);
     std::fclose(f);
-    std::string cmd = std::string(g_self) + " --restore-kernel " + file + " > " + out;
+    std::string cmd = std::string(g_self) + " --restore-firmware " + file + " > " + out;
     CHECK(std::system(cmd.c_str()) == 0);
     std::string got;
     if (std::FILE* o = std::fopen(out.c_str(), "rb"))
@@ -2840,10 +2840,10 @@ static void test_changed_gmatch_not_persisted()
 static void test_restore_errors()
 {
   CountingAlloc a1;
-  lua_State* A = kernel_state(&a1, 99);
+  lua_State* A = firmware_state(&a1, 99);
   std::string t;
-  kernel_step(A, &t);
-  std::string blob = persist_kernel(A);
+  firmware_step(A, &t);
+  std::string blob = persist_firmware(A);
   lua_close(A);
   struct Bad
   {
@@ -2851,10 +2851,10 @@ static void test_restore_errors()
     void (*setup)(lua_State*);
     const char* msg;
   } bad[] = {
-    {"not a stream", kernel_setup, "not a persisted state"},
+    {"not a stream", firmware_setup, "not a persisted state"},
     {blob, push_one, "the setup must leave the permanents table (key -> object) or nil"},
     {blob, raise_error, "no setup here"},
-    {blob.substr(0, blob.size() / 2), kernel_setup, "invalid persisted data"},
+    {blob.substr(0, blob.size() / 2), firmware_setup, "invalid persisted data"},
   };
   for (const Bad& b : bad)
   {
@@ -2930,8 +2930,8 @@ static void run_cpp_tests()
       {"frozen_main_thread_restored_at_rest", test_frozen_main_thread_restored_at_rest},
       {"frozen_main_thread_close", test_frozen_main_thread_close},
       {"frozen_corrupted_streams", test_frozen_corrupted_streams},
-      {"kernel_persistence", test_kernel_persistence},
-      {"kernel_in_another_process", test_kernel_in_another_process},
+      {"firmware_persistence", test_firmware_persistence},
+      {"firmware_in_another_process", test_firmware_in_another_process},
       {"thread_at_stack_limit", test_thread_at_stack_limit},
       {"restore_collects", test_restore_collects},
       {"persist_from_held_thread", test_persist_from_held_thread},
@@ -3020,8 +3020,8 @@ static void run_scripts()
 
 int main(int argc, char** argv)
 {
-  if (argc == 3 && std::string(argv[1]) == "--restore-kernel")
-    return restore_kernel_child(argv[2]);
+  if (argc == 3 && std::string(argv[1]) == "--restore-firmware")
+    return restore_firmware_child(argv[2]);
   if (argc >= 1)
     g_self = argv[0];
   std::printf("\n\tStarting styx tests\n\n");

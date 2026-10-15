@@ -27,7 +27,7 @@ for _, k in ipairs{"loaded", "preload", "searchers"} do perms[package[k]] = "pac
 for k, v in pairs(perms) do back[v] = back[v] or k end
 back = H.invert(perms)
 
--- the budget callbacks are the kernel's own functions: a value persist takes
+-- the budget callbacks are the firmware's own functions: a value persist takes
 -- them as permanents (it refuses one that is not)
 local ncb = 0
 local function permcb(f)
@@ -181,7 +181,7 @@ end)
 
 case("a thread with no budget of its own that the program resumes is in the chain, persists and restores", function()
   everywhere("unbudgeted thread", function(out)
-    -- (made here, by the kernel: no budget group of its own)
+    -- (made here, by the firmware: no budget group of its own)
     local k = coroutine.create(function()
       local s = 0
       for i = 1, 30 do s = s + i out[#out + 1] = s end
@@ -340,13 +340,13 @@ case("a budget group: limit and callback survive", function()
   local n1, f1 = debug.getbudget(co)
   local r = styx.unpersist(back, styx.persist(perms, {co = co, state = state}))
   local n2, f2 = debug.getbudget(r.co)
-  assert(n1 == 9 and n2 == 9 and f2 == f1) -- (the kernel's function, as a permanent)
+  assert(n1 == 9 and n2 == 9 and f2 == f1) -- (the firmware's function, as a permanent)
 end)
 
 case("a value persist refuses a budget callback that is not a permanent", function()
   local co = coroutine.create(function() for i = 1, 100 do end end)
-  local kernelstate = {secret = "of the kernel"}
-  debug.setbudget(co, 5, function() kernelstate.n = 1 debug.freeze() end)
+  local firmwarestate = {secret = "of the firmware"}
+  debug.setbudget(co, 5, function() firmwarestate.n = 1 debug.freeze() end)
   assert(coroutine.resume(co) and debug.isfrozen(co))
   local ok, err = pcall(styx.persist, perms, co)
   assert(not ok and err:find("cannot persist a budget callback that is not a permanent", 1, true), err)
@@ -409,7 +409,7 @@ case("a group persisted from inside its own callback has its steps left, as afte
   user_co = nil
   collectgarbage(); collectgarbage() -- (the group's root is gone: nothing running to refuse)
   assert(select(4, debug.getbudget(S5task)) == nil)
-  assert(coroutine.resume(task1)) -- the kernel runs a task: the callback persists the other
+  assert(coroutine.resume(task1)) -- the firmware runs a task: the callback persists the other
   assert(S5blob)
   local t2 = styx.unpersist(back, S5blob)
   local n, _, left = debug.getbudget(t2)
@@ -426,7 +426,7 @@ case("objects of the program waiting for its '__gc' come with it, and their '__g
     return table.concat(out, " ")
   end, 2, 50)
   assert(debug.isfrozen(co))
-  collectgarbage() -- (the kernel's collection: they die, and wait for the program)
+  collectgarbage() -- (the firmware's collection: they die, and wait for the program)
   local r = styx.unpersist(back, styx.persist(perms, co))
   collectgarbage()
   local a, b = finish(co), finish(r)

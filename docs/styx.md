@@ -1,12 +1,12 @@
 # Styx
 
-Styx is the persistence of this Lua's kernel: the host persists a whole
+Styx is the persistence of this Lua's firmware: the host persists a whole
 state at rest into a string, and restores it into a new state that goes on
 exactly as the original would have. Scripts cannot persist (ADR-35).
 
 Lineage: Pluto (Lua 5.1) -> Eris (a rewrite of Pluto for Lua 5.2, later
 5.3) -> Styx. It started from Eris's API (a script library that persists
-any value); it is now the kernel's persistence only, which lets a restore
+any value); it is now the firmware's persistence only, which lets a restore
 keep what Pluto and Eris could not, such as the order of every table
 (ADR-22, ADR-35).
 
@@ -40,14 +40,14 @@ struct luaL_Restored { lua_State* L; HostString msg; };
 luaL_Restored luaL_restorestate(lua_Alloc* f, byte_view data, luaL_RestoreSetup* setup);
 ```
 
-- The kernel's workflow: the kernel (a coroutine the host resumes) freezes
+- The firmware's workflow: the firmware (a coroutine the host resumes) freezes
   or suspends its programs and yields back to the host; the host persists
   the state there, with no Lua code running. To restore, the host calls
   `luaL_restorestate`: it makes a new state with the stream's seed, runs
   the host's `setup` (the same libraries and the host's permanents, in the
   same order as for the original; it leaves the inverse permanents table,
   or nil) and restores the state into it. The host anchors in the registry
-  what it needs back, such as the kernel coroutine (the main thread's stack
+  what it needs back, such as the firmware coroutine (the main thread's stack
   is not part of a state). The restore gives back the thread the state was
   persisted from: the main thread, or, for a main thread frozen by its
   budget, the host's other thread (ADR-24).
@@ -86,9 +86,9 @@ luaL_Restored luaL_restorestate(lua_Alloc* f, byte_view data, luaL_RestoreSetup*
     `special` (`__persist`), `paths` (error paths), `tbc`
     (to-be-closed variables), `protos` (shared prototypes), `children`
     (child coroutines and permanents), `errors`, `memory`
-    (accounting and allocation failures), `resume_print`. A kernel's state
+    (accounting and allocation failures), `resume_print`. The firmware's state
     restored in another process is the C++ test
-    `kernel_in_another_process` (the test restores it in a child of
+    `firmware_in_another_process` (the test restores it in a child of
     itself).
   - Debug builds (`make debug styx-test`) also open the test library `T`,
     which enables the heap invariant checks and the allocation-failure
@@ -1171,7 +1171,7 @@ committed), it falls short:
    - raise an error: an ordinary error, which scripts can catch; freezing
      is the tool for code that may not cooperate.
 3. **Where a freeze lands is named by the callback.** The host names its
-   kernel's thread and lands in its own `lua_resume`; a kernel names a
+   firmware's thread and lands in its own `lua_resume`; the firmware names a
    user program and lands in its own `coroutine.resume`. That call returns
    as an empty yield (`true`, or `{LUA_YIELD, 0}`); the coroutines between
    pass the freeze through their `coroutine.resume` calls without seeing
@@ -1219,7 +1219,7 @@ committed), it falls short:
 **In practice.** The host:
 
 ```cpp
-static lua_State* K;   // the kernel's thread
+static lua_State* K;   // the firmware's thread
 
 static void onbudget(lua_State* co)  // co spent the budget
 {
@@ -1237,14 +1237,14 @@ for (;;)
       luaL_persiststate(L, perms, &writer);   // .status, .msg
     r = lua_thaw(K, nullptr);        // next tick; returns like lua_resume
   }
-  else if (r.status == LUA_YIELD)    // the kernel's own yield to the host
+  else if (r.status == LUA_YIELD)    // the firmware's own yield to the host
     r = lua_resume(K, nullptr, serve(K, r.nres));
   else
     break;                           // LUA_OK, or an error
 }
 ```
 
-A kernel, in script:
+The firmware, in script:
 
 ```lua
 local current   -- the user program being run
@@ -1348,20 +1348,20 @@ What a frozen chain is, to Styx:
   the name of its callback, its value (the debug library's Lua function),
   the thread it was set on and its queue of waiting `__gc`; a thread keeps
   its own group and the one in effect. A thread of the chain with no group
-  of its own (a kernel thread the program resumed) keeps only the one in
+  of its own (a firmware thread the program resumed) keeps only the one in
   effect. Restored in a state with no thread for the debug library's
   callbacks, the group makes one (the callback's `prepare`).
-- **The callback is the kernel's.** In a value round trip (the tests',
+- **The callback is the firmware's.** In a value round trip (the tests',
   `lua_styxpersistvalue`) the callback's value must be a permanent ("cannot
   persist a budget callback that is not a permanent"): copied, it would be
-  another function, with copies of the kernel's upvalues. A whole-state
+  another function, with copies of the firmware's upvalues. A whole-state
   snapshot persists it as it does every function of the state.
 - **Steps left inside the callback.** A group persisted while its callback
   runs is written with its full limit, which is what it has when the
   callback returns without a freeze.
 - **Deferred `__gc`.** An object marked for finalization keeps its owner:
   the trailer says, for each marked object, whether it belongs to the
-  kernel, to a group (the reference of the group in the stream) or to a
+  firmware, to a group (the reference of the group in the stream) or to a
   group that is gone (it is then an ordinary object when it dies, as in the
   persisting state), and whether its `__gc` was already due (waiting in
   `tobefnz` or in a group's queue). The same holds for the user objects of
@@ -1386,7 +1386,7 @@ What a frozen chain is, to Styx:
 - **Inside the budget callback.** A thread of the chain that spent the budget
   is still running there, so persisting it is refused ("a running thread");
   once the callback has frozen it, it persists. This is by design (not a
-  workflow, specification 13.4): a kernel persists a thread once
+  workflow, specification 13.4): the firmware persists a thread once
   `debug.isfrozen(co)` is true.
 
 Tests: `frozen.lua` (programs frozen at every budget point, persisted,
@@ -1402,20 +1402,20 @@ group), a host's own continuation and budget callback (not persisted until
 named) and a restore that runs out of memory at many sizes.
 
 
-### ADR-35: The kernel's persistence only
+### ADR-35: The firmware's persistence only
 **Status:** accepted (2026-10-11)
 Styx persists one thing: a whole state at rest, which the host persists
 and restores. Scripts cannot persist, and no value is persisted or
 restored apart from the state it lives in.
-- The workflow: the kernel (a coroutine the host resumes) freezes or
+- The workflow: the firmware (a coroutine the host resumes) freezes or
   suspends its programs and yields back to the host; the host then
   persists the state (`luaL_persiststate`), with no Lua code running. To
   restore, `luaL_restorestate` makes a new state with the stream's seed,
   runs the host's setup, restores the state into it, and the host resumes
-  the kernel from where it anchored it in the registry. A kernel running
+  the firmware from where it anchored it in the registry. Firmware that runs
   several programs persists them all with it.
 - Why: the order of a table depends on the state's hash seed, which every
-  string and table of the state shares, the kernel's and the programs'
+  string and table of the state shares, the firmware's and the programs'
   alike. A value restored into a state with another seed cannot keep its
   order, and a state cannot change its seed while anything in it may be
   iterating. A whole state restored into a state made for it keeps every
@@ -1432,17 +1432,17 @@ restored apart from the state it lives in.
   tests of the serializer (`lua_styxpersistvalue`, `lua_styxunpersistvalue`
   and the module the test scripts require as `styx`): a state is persisted
   as the values it holds, so each kind of value is tested on its own there.
-- Tested: `kernel_persistence` runs a kernel coroutine with three user
+- Tested: `firmware_persistence` runs a firmware coroutine with three user
   programs (tables with churn iterated by `pairs`, object keys, closures,
   a load with a reader, a sort with a comparator, a match), each with its
   budget, frozen in their callbacks or suspended; the host persists the
-  whole state at every one of the kernel's yields, restores it with
-  `luaL_restorestate` and resumes the kernel, and the original and the
-  copy end as a run with no persist; `kernel_in_another_process` restores
+  whole state at every one of the firmware's yields, restores it with
+  `luaL_restorestate` and resumes the firmware, and the original and the
+  copy end as a run with no persist; `firmware_in_another_process` restores
   it in another process (its own addresses: a table keyed by library
   functions keeps its order there), replacing `processes.lua`.
   `restore_errors`, `restore_takes_the_seed`, `no_script_library`.
-- A kernel keeps its programs clear of what Styx cannot persist (a
+- The firmware keeps its programs clear of what Styx cannot persist (a
   userdata with no `__persist`, a C function or continuation with no
   name, a hook set from C). `debug.persistable(v [, permanents])` tells it
   before the host persists: true, or false and why, with the path of what
@@ -1450,7 +1450,7 @@ restored apart from the state it lives in.
   root<stack 2>)"), so that a failure in production names the program and
   what it holds. It is the host persist's walk with a writer that keeps
   nothing: no Lua code runs and nothing is allocated in the state; threads
-  running now (the kernel's own) are taken as the host will find them, at
+  running now (the firmware's own) are taken as the host will find them, at
   rest. (`debug.detached`, which checked a thread for a persist apart from
   its state, is gone.)
 

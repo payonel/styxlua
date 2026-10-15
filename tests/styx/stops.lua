@@ -27,12 +27,12 @@ for _, k in ipairs{"loaded", "preload", "searchers"} do perms[package[k]] = "pac
 for k, v in pairs(perms) do back[v] = back[v] or k end
 back = H.invert(perms)
 
--- the budget callbacks are the kernel's own functions: a value persist takes
+-- the budget callbacks are the firmware's own functions: a value persist takes
 -- them as permanents (it refuses one that is not)
 
 -- a thaw that stops above a coroutine (debug.thaw(co, stops)) leaves a
 -- program with frozen coroutines of its own: its 'init' holds the children
--- the kernel's thaws stopped above (one stopped in a close too), and thaws
+-- the firmware's thaws stopped above (one stopped in a close too), and thaws
 -- them itself, so its chain freezes through its thaw of a child. Persisted
 -- at every freeze, restored, and run on beside the original with the same
 -- stops, the copy ends as the original, with the same log
@@ -112,9 +112,9 @@ local function program(log)
   end
 end
 
--- the kernel: thaws at the freezes after the k-th, stopping above the
+-- the firmware: thaws at the freezes after the k-th, stopping above the
 -- program's coroutines at every 'every'-th; nil at its p-th freeze. A
--- frozen coroutine the program ends with is one it hands to the kernel,
+-- frozen coroutine the program ends with is one it hands to the firmware,
 -- which thaws it to its end
 local function drive(st, every, p)
   local r = st.r
@@ -142,7 +142,7 @@ local function start(n, program)
   local st = {log = log, stops = setmetatable({}, {__mode = "k"}), k = 0}
   st.co = coroutine.create(program(log))
   debug.setbudget(st.co, n, spent)
-  -- (a thread of the kernel's for the program: no budget group of its own)
+  -- (a thread of the firmware's for the program: no budget group of its own)
   local k0 = coroutine.create(function(m) local s = 0 for i = 1, m do s = s + i end return s end)
   st.r = table.pack(coroutine.resume(st.co, st.stops, k0))
   return st
@@ -255,7 +255,7 @@ local shapes = {
     while debug.isfrozen(c) do got = table.pack(debug.thaw(c)) end
     return got[2]
   end),
-  -- the kernel's thread (no budget group of its own) is stopped above: it
+  -- the firmware's thread (no budget group of its own) is stopped above: it
   -- gets the group it ran with
   group = under(function(log, stops, k0)
     stops[k0] = true
@@ -278,8 +278,8 @@ local shapes = {
     while debug.isfrozen(c) do r = table.pack(debug.thaw(c)) end
     return r[2]
   end),
-  -- the program hands the kernel a coroutine stopped above, which the
-  -- kernel thaws to its end
+  -- the program hands the firmware a coroutine stopped above, which the
+  -- firmware thaws to its end
   handed = under(function(log, stops)
     local c = coroutine.create(function() return busy(2000) end)
     stops[c] = true
